@@ -128,18 +128,21 @@ data class ResultadoMoskiCheckApi(
 object ApiService {
 
     /**
-     * 10.0.2.2 representa localhost de la computadora
-     * cuando la aplicación se ejecuta dentro del emulador Android.
+     * Backend oficial MoskiCheck desplegado en Railway.
      *
-     * Durante el desarrollo:
+     * La aplicación Android se comunica exclusivamente
+     * mediante HTTPS con el Backend de producción.
      *
-     * Android Emulator
+     * Android
+     *      ↓ HTTPS
+     * Backend MoskiCheck - Railway
      *      ↓
-     * http://10.0.2.2:3000
+     * MoskiCheck IA
      *      ↓
-     * Backend Node local
+     * MySQL
      */
-    private const val BASE_URL = "http://10.0.2.2:3000/api"
+    private const val BASE_URL =
+        "https://mi-app-backend-production-01e4.up.railway.app/api"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
