@@ -1,5 +1,11 @@
 package com.dvt.medicimapp.presentation.screens.guide
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dvt.medicimapp.di.AppViewModelFactory
+import com.dvt.medicimapp.presentation.viewmodel.GuideViewModel
+import com.dvt.medicimapp.data.model.GuiaItem
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -25,18 +31,15 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dvt.medicimapp.ui.theme.*
 
-data class GuiaItem(
-    val titulo: String,
-    val descripcion: String,
-    val icono: String,
-    val categoria: String
-)
-
 @Composable
-fun GuideScreen(navController: NavController) {
+fun GuideScreen(
+    navController: NavController,
+    viewModel: GuideViewModel = viewModel(factory = AppViewModelFactory())
+) {
 
-    val categorias = listOf("Todas", "Hogar", "Personal", "Comunidad")
-    var categoriaSeleccionada by remember { mutableStateOf("Todas") }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val categorias = state.categorias
+    val categoriaSeleccionada = state.categoriaSeleccionada
 
     // Color por categoría centralizado
     fun colorDeCategoria(categoria: String): Color = when (categoria) {
@@ -46,23 +49,7 @@ fun GuideScreen(navController: NavController) {
         else        -> MoskiGreen
     }
 
-    val guias = listOf(
-        GuiaItem("Tapa recipientes con agua", "Cubre baldes, tanques y cualquier recipiente que almacene agua. El mosquito del dengue se reproduce en agua limpia estancada.", "💧", "Hogar"),
-        GuiaItem("Elimina agua estancada", "Vacía y limpia floreros, bebederos, platillos de macetas y cualquier objeto que acumule agua al menos cada 3 días.", "🪣", "Hogar"),
-        GuiaItem("Limpia canaletas y desagües", "Revisa que canaletas, desagües y techos estén limpios y sin obstrucciones para evitar acumulación de agua.", "🏠", "Hogar"),
-        GuiaItem("Guarda llantas bajo techo", "Las llantas acumulan agua de lluvia y son criaderos ideales. Guárdalas cubiertas o perfóralas si no las usas.", "🔧", "Hogar"),
-        GuiaItem("Usa repelente de insectos", "Aplica repelente en zonas expuestas de la piel al salir de casa, especialmente en horas de mayor actividad del mosquito (amanecer y atardecer).", "🧴", "Personal"),
-        GuiaItem("Usa ropa protectora", "Viste ropa de manga larga y pantalones largos, especialmente en zonas boscosas o con alta presencia de mosquitos.", "👕", "Personal"),
-        GuiaItem("Usa mosquiteros", "Coloca mosquiteros en ventanas, puertas y camas. Son especialmente importantes para proteger a niños y personas mayores.", "🪟", "Personal"),
-        GuiaItem("Consulta al médico ante síntomas", "Si presentas fiebre alta, dolor de cabeza intenso, dolor detrás de los ojos o sarpullido, acude inmediatamente a un centro de salud.", "🩺", "Personal"),
-        GuiaItem("Reporta criaderos en tu zona", "Si encuentras focos de mosquitos o criaderos en espacios públicos, repórtalos a las autoridades de salud o usa esta app.", "📢", "Comunidad"),
-        GuiaItem("Participa en jornadas de fumigación", "Colabora con las campañas de fumigación organizadas por el MINSA y la municipalidad en tu distrito.", "🏘️", "Comunidad"),
-        GuiaItem("Informa a tus vecinos", "Comparte información sobre prevención del dengue con familiares y vecinos. La prevención comunitaria es clave para reducir casos.", "👥", "Comunidad"),
-        GuiaItem("Mantén limpio el espacio público", "Participa en actividades de limpieza de parques, calles y áreas comunales para eliminar posibles criaderos.", "🌿", "Comunidad"),
-    )
-
-    val guiasFiltradas = if (categoriaSeleccionada == "Todas") guias
-    else guias.filter { it.categoria == categoriaSeleccionada }
+    val guiasFiltradas = state.guias
 
     Scaffold(
         containerColor = MoskiBackground,
@@ -128,7 +115,7 @@ fun GuideScreen(navController: NavController) {
 
                     FilterChip(
                         selected = seleccionado,
-                        onClick = { categoriaSeleccionada = categoria },
+                        onClick = { viewModel.seleccionarCategoria(categoria) },
                         label = {
                             Text(
                                 categoria,
@@ -184,7 +171,7 @@ fun GuideScreen(navController: NavController) {
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 items(guiasFiltradas, key = { it.titulo }) { guia ->
-                    var expandido by remember { mutableStateOf(false) }
+                    var expandido by rememberSaveable { mutableStateOf(false) }
                     val categoriaColor = colorDeCategoria(guia.categoria)
 
                     Card(

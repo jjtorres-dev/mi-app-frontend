@@ -1,5 +1,14 @@
 package com.dvt.medicimapp.data
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import java.io.IOException
+import kotlin.coroutines.resumeWithException
+import com.dvt.medicimapp.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -8,117 +17,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
-
-
-// ============================================================
-// MODELOS DE REPORTES
-// ============================================================
-
-data class ReporteApi(
-    val id: Int,
-    val nombre: String,
-    val distrito: String,
-    val barrio: String?,
-    val tipoCriadero: String,
-    val descripcion: String?,
-    val fechaHora: String,
-    val esAnonimo: Boolean,
-    val estado: String
-)
-
-data class ReporteZonaApi(
-    val distrito: String,
-    val totalReportes: Int,
-    val recipiente: Int,
-    val llanta: Int,
-    val acequia: Int,
-    val maleza: Int,
-    val basura: Int
-)
-
-data class AlertaApi(
-    val distrito: String,
-    val nivel: String,
-    val totalReportes: Int,
-    val descripcion: String
-)
-
-data class TotalesApi(
-    val totalReportes: Int,
-    val totalDistritos: Int
-)
-
-
-// ============================================================
-// MODELOS MOSKICHECK V3
-// ============================================================
-
-/**
- * Solicitud oficial enviada por Android al Backend V3.
- *
- * 11 campos corresponden a síntomas utilizados por el modelo
- * de Machine Learning.
- *
- * 3 campos corresponden a señales de seguridad y NO son
- * utilizados como características del modelo.
- */
-data class EvaluacionMoskiCheckRequest(
-
-    // 11 síntomas del modelo
-    val suddenFever: Int,
-    val headache: Int,
-    val musclePain: Int,
-    val jointPain: Int,
-    val vomiting: Int,
-    val rash: Int,
-    val nausea: Int,
-    val fatigue: Int,
-    val orbitalPain: Int,
-    val redEyes: Int,
-    val swelling: Int,
-
-    // 3 señales de seguridad
-    val dolorAbdominalIntenso: Int,
-    val sangrado: Int,
-    val vomitosPersistentes: Int
-)
-
-
-/**
- * Probabilidades generadas por el modelo.
- *
- * Pueden ser null cuando:
- *
- * - el resultado es "alert";
- * - hay menos de 3 síntomas.
- */
-data class ProbabilidadesMoskiCheckApi(
-    val chikungunya: Double,
-    val dengue: Double,
-    val zika: Double
-)
-
-
-/**
- * Resultado oficial devuelto por MoskiCheck IA V3,
- * pasando primero por el Backend Node.js.
- *
- * status puede ser:
- *
- * orientation
- * inconclusive
- * alert
- */
-data class ResultadoMoskiCheckApi(
-    val status: String,
-    val prediction: String?,
-    val confidence: Double?,
-    val probabilities: ProbabilidadesMoskiCheckApi?,
-    val symptomCount: Int,
-    val alertsDetected: List<String>,
-    val modelVersion: String?,
-    val message: String
-)
 
 
 // ============================================================
@@ -165,18 +63,18 @@ object ApiService {
                     .get()
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                executeRequest(request).let { response ->
 
-                    val body = response.body?.string()
+                    val body = response.body
                         ?: return@withContext Result.failure(
-                            Exception("Respuesta vacía")
+                            ApiError.InvalidResponse()
                         )
 
                     val json = JSONObject(body)
 
                     if (!response.isSuccessful || !json.optBoolean("ok", false)) {
                         return@withContext Result.failure(
-                            Exception(obtenerMensajeError(json))
+                            ApiError.Rejected(obtenerMensajeError(json))
                         )
                     }
 
@@ -195,15 +93,11 @@ object ApiService {
                                     "Anónimo"
                                 ),
                                 distrito = obj.getString("distrito"),
-                                barrio = obj.optString(
-                                    "barrio"
-                                ),
+                                barrio = obj.nullableString("barrio"),
                                 tipoCriadero = obj.getString(
                                     "tipo_criadero"
                                 ),
-                                descripcion = obj.optString(
-                                    "descripcion"
-                                ),
+                                descripcion = obj.nullableString("descripcion"),
                                 fechaHora = obj.getString(
                                     "fecha_hora"
                                 ),
@@ -221,9 +115,11 @@ object ApiService {
                     Result.success(reportes)
                 }
 
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
 
-                Result.failure(e)
+                Result.failure(ApiError.from(e))
             }
         }
 
@@ -243,18 +139,18 @@ object ApiService {
                     .get()
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                executeRequest(request).let { response ->
 
-                    val body = response.body?.string()
+                    val body = response.body
                         ?: return@withContext Result.failure(
-                            Exception("Respuesta vacía")
+                            ApiError.InvalidResponse()
                         )
 
                     val json = JSONObject(body)
 
                     if (!response.isSuccessful || !json.optBoolean("ok", false)) {
                         return@withContext Result.failure(
-                            Exception(obtenerMensajeError(json))
+                            ApiError.Rejected(obtenerMensajeError(json))
                         )
                     }
 
@@ -300,9 +196,11 @@ object ApiService {
                     Result.success(zonas)
                 }
 
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
 
-                Result.failure(e)
+                Result.failure(ApiError.from(e))
             }
         }
 
@@ -321,18 +219,18 @@ object ApiService {
                     .get()
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                executeRequest(request).let { response ->
 
-                    val body = response.body?.string()
+                    val body = response.body
                         ?: return@withContext Result.failure(
-                            Exception("Respuesta vacía")
+                            ApiError.InvalidResponse()
                         )
 
                     val json = JSONObject(body)
 
-                    if (!response.isSuccessful) {
+                    if (!response.isSuccessful || !json.optBoolean("ok", false)) {
                         return@withContext Result.failure(
-                            Exception(obtenerMensajeError(json))
+                            ApiError.Rejected(obtenerMensajeError(json))
                         )
                     }
 
@@ -350,9 +248,11 @@ object ApiService {
                     )
                 }
 
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
 
-                Result.failure(e)
+                Result.failure(ApiError.from(e))
             }
         }
 
@@ -369,26 +269,31 @@ object ApiService {
             try {
 
                 val request = Request.Builder()
-                    .url("$BASE_URL/alertas/hoy?distrito=$distrito")
+                    .url("$BASE_URL/alertas/hoy".toHttpUrl().newBuilder()
+                        .addQueryParameter("distrito", distrito).build())
                     .get()
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                executeRequest(request).let { response ->
 
-                    val body = response.body?.string()
+                    val body = response.body
                         ?: return@withContext Result.failure(
-                            Exception("Respuesta vacía")
+                            ApiError.InvalidResponse()
                         )
 
                     val json = JSONObject(body)
 
-                    if (!response.isSuccessful) {
+                    if (!response.isSuccessful || !json.optBoolean("ok", false)) {
                         return@withContext Result.failure(
-                            Exception(obtenerMensajeError(json))
+                            ApiError.Rejected(obtenerMensajeError(json))
                         )
                     }
 
                     val data = json.getJSONObject("data")
+                    val nivel = data.getString("nivel")
+                    if (nivel !in setOf("bajo", "moderado", "alto", "critico")) {
+                        throw ApiError.InvalidResponse()
+                    }
 
                     Result.success(
                         AlertaApi(
@@ -396,14 +301,8 @@ object ApiService {
                                 "distrito",
                                 distrito
                             ),
-                            nivel = data.optString(
-                                "nivel",
-                                "bajo"
-                            ),
-                            totalReportes = data.optInt(
-                                "total_reportes",
-                                0
-                            ),
+                            nivel = nivel,
+                            totalReportes = data.getInt("total_reportes"),
                             descripcion = data.optString(
                                 "descripcion",
                                 "Sin reportes recientes"
@@ -412,9 +311,11 @@ object ApiService {
                     )
                 }
 
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
 
-                Result.failure(e)
+                Result.failure(ApiError.from(e))
             }
         }
 
@@ -483,18 +384,18 @@ object ApiService {
                     .post(body)
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                executeRequest(request).let { response ->
 
-                    val respBody = response.body?.string()
+                    val respBody = response.body
                         ?: return@withContext Result.failure(
-                            Exception("Respuesta vacía")
+                            ApiError.InvalidResponse()
                         )
 
                     val json = JSONObject(respBody)
 
                     if (!response.isSuccessful || !json.optBoolean("ok", false)) {
                         return@withContext Result.failure(
-                            Exception(obtenerMensajeError(json))
+                            ApiError.Rejected(obtenerMensajeError(json))
                         )
                     }
 
@@ -503,9 +404,11 @@ object ApiService {
                     )
                 }
 
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
 
-                Result.failure(e)
+                Result.failure(ApiError.from(e))
             }
         }
 
@@ -618,13 +521,11 @@ object ApiService {
                     .build()
 
 
-                client.newCall(request).execute().use { response ->
+                executeRequest(request).let { response ->
 
-                    val responseBody = response.body?.string()
+                    val responseBody = response.body
                         ?: return@withContext Result.failure(
-                            Exception(
-                                "El servidor devolvió una respuesta vacía."
-                            )
+                            ApiError.InvalidResponse()
                         )
 
 
@@ -641,9 +542,7 @@ object ApiService {
                     ) {
 
                         return@withContext Result.failure(
-                            Exception(
-                                obtenerMensajeError(json)
-                            )
+                            ApiError.Rejected(obtenerMensajeError(json))
                         )
                     }
 
@@ -655,9 +554,7 @@ object ApiService {
                     ) {
 
                         return@withContext Result.failure(
-                            Exception(
-                                "El servidor no devolvió el resultado de la evaluación."
-                            )
+                            ApiError.InvalidResponse()
                         )
                     }
 
@@ -686,9 +583,7 @@ object ApiService {
                     ) {
 
                         return@withContext Result.failure(
-                            Exception(
-                                "El servidor devolvió un estado de evaluación desconocido."
-                            )
+                            ApiError.InvalidResponse()
                         )
                     }
 
@@ -750,22 +645,13 @@ object ApiService {
 
                             ProbabilidadesMoskiCheckApi(
                                 chikungunya =
-                                    probabilitiesJson.optDouble(
-                                        "chikungunya",
-                                        0.0
-                                    ),
+                                    probabilitiesJson.getDouble("chikungunya"),
 
                                 dengue =
-                                    probabilitiesJson.optDouble(
-                                        "dengue",
-                                        0.0
-                                    ),
+                                    probabilitiesJson.getDouble("dengue"),
 
                                 zika =
-                                    probabilitiesJson.optDouble(
-                                        "zika",
-                                        0.0
-                                    )
+                                    probabilitiesJson.getDouble("zika")
                             )
 
                         } else {
@@ -859,16 +745,54 @@ object ApiService {
                 }
 
 
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
 
-                Result.failure(e)
+                Result.failure(ApiError.from(e))
             }
         }
 
 
+
+    internal data class ResponseData(val code: Int, val body: String?) {
+        val isSuccessful: Boolean get() = code in 200..299
+    }
+
+    /** Read and close the body before completing the continuation: cancellation cancels the call. */
+    internal suspend fun executeRequest(
+        request: Request,
+        httpClient: OkHttpClient = client
+    ): ResponseData = suspendCancellableCoroutine { continuation ->
+        val call = httpClient.newCall(request)
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWithException(ApiError.from(e))
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    val payload = response.use {
+                        if (!it.isSuccessful) throw ApiError.Http(it.code)
+                        val body = it.body?.string()?.takeIf { text -> text.isNotBlank() }
+                            ?: throw ApiError.InvalidResponse()
+                        ResponseData(it.code, body)
+                    }
+                    continuation.resumeWith(Result.success(payload))
+                } catch (error: Exception) {
+                    continuation.resumeWithException(ApiError.from(error))
+                }
+            }
+        })
+    }
+
     // ========================================================
     // UTILIDAD PARA MENSAJES DE ERROR
     // ========================================================
+
+    private fun JSONObject.nullableString(key: String): String? =
+        if (!has(key) || isNull(key)) null else getString(key)
 
     private fun obtenerMensajeError(
         json: JSONObject

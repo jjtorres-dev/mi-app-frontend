@@ -1,5 +1,9 @@
 package com.dvt.medicimapp.presentation.screens.reports
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dvt.medicimapp.di.AppViewModelFactory
+import com.dvt.medicimapp.presentation.viewmodel.ReportsViewModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,48 +24,25 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.dvt.medicimapp.data.ApiService
-import com.dvt.medicimapp.data.ReporteApi
-import com.dvt.medicimapp.data.ReporteZonaApi
+import com.dvt.medicimapp.data.model.ReporteApi
+import com.dvt.medicimapp.data.model.ReporteZonaApi
 import com.dvt.medicimapp.ui.theme.*
 
 @Composable
-fun ReportsScreen(navController: NavController) {
+fun ReportsScreen(
+    navController: NavController,
+    viewModel: ReportsViewModel = viewModel(factory = AppViewModelFactory())
+) {
 
-    // ── Estado desde la API ───────────────────────────────────────────────────
-    var zonas            by remember { mutableStateOf<List<ReporteZonaApi>>(emptyList()) }
-    var reportesRecientes by remember { mutableStateOf<List<ReporteApi>>(emptyList()) }
-    var totalReportes    by remember { mutableStateOf(0) }
-    var totalDistritos   by remember { mutableStateOf(0) }
-    var cargando         by remember { mutableStateOf(true) }
-    var error            by remember { mutableStateOf<String?>(null) }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val zonas = state.zonas
+    val reportesRecientes = state.reportesRecientes
+    val totalReportes = state.totalReportes?.toString() ?: "-"
+    val totalDistritos = state.totalDistritos?.toString() ?: "-"
+    val cargando = state.loading
+    val error = state.error
 
-    // ── Cargar datos al abrir la pantalla ─────────────────────────────────────
-    LaunchedEffect(Unit) {
-        cargando = true
-        error    = null
-
-        val zonasResult   = ApiService.obtenerReportesPorDistrito()
-        val reportesResult = ApiService.obtenerReportes()
-        val totalesResult  = ApiService.obtenerTotales()
-
-        zonasResult.fold(
-            onSuccess = { zonas = it },
-            onFailure = { error = "No se pudo cargar el ranking de zonas" }
-        )
-        reportesResult.fold(
-            onSuccess = { reportesRecientes = it.take(10) }, // mostrar los 10 más recientes
-            onFailure = { if (error == null) error = "No se pudo cargar los reportes recientes" }
-        )
-        totalesResult.fold(
-            onSuccess = { totalReportes = it.totalReportes; totalDistritos = it.totalDistritos },
-            onFailure = { }
-        )
-
-        cargando = false
-    }
-
-    val maxReportes  = zonas.maxOfOrNull { it.totalReportes }?.toFloat() ?: 1f
+    val maxReportes  = (zonas.maxOfOrNull { it.totalReportes } ?: 0).coerceAtLeast(1).toFloat()
     val masAfectado  = zonas.maxByOrNull { it.totalReportes }?.distrito?.split(" ")?.first() ?: "-"
 
     fun colorDeRanking(index: Int): Color = when (index) {
@@ -257,7 +238,7 @@ fun ReportsScreen(navController: NavController) {
                                 CircleShape),
                             contentAlignment = Alignment.Center) {
                             Text(
-                                if (reporte.esAnonimo) "?" else reporte.nombre.first().toString(),
+                                if (reporte.esAnonimo) "?" else reporte.nombre.firstOrNull()?.toString() ?: "?",
                                 fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
                                 color = if (reporte.esAnonimo) MoskiTextHint else MoskiGreen
                             )

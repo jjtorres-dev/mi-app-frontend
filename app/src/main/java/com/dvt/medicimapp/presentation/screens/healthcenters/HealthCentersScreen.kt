@@ -1,5 +1,10 @@
 package com.dvt.medicimapp.presentation.screens.healthcenters
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dvt.medicimapp.di.AppViewModelFactory
+import com.dvt.medicimapp.presentation.viewmodel.HealthCentersViewModel
+import com.dvt.medicimapp.data.model.CentroSalud
 import android.content.Intent
 import android.net.Uri
 import android.preference.PreferenceManager
@@ -35,30 +40,17 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 
-data class CentroSalud(
-    val nombre: String,
-    val tipo: String,
-    val direccion: String,
-    val telefono: String,
-    val lat: Double,
-    val lon: Double
-)
-
 @Composable
-fun HealthCentersScreen(navController: NavController) {
+fun HealthCentersScreen(
+    navController: NavController,
+    viewModel: HealthCentersViewModel = viewModel(factory = AppViewModelFactory())
+) {
 
     val context = LocalContext.current
 
-    val centros = listOf(
-        CentroSalud("Hospital II-2 Tarapoto", "Hospital", "Jr. Salaverry N° 1215, Tarapoto", "042522331", -6.4851, -76.3615),
-        CentroSalud("C.S. Morales", "Centro de Salud", "Jr. Los Pinos S/N, Morales", "042521890", -6.4920, -76.3700),
-        CentroSalud("C.S. Banda de Shilcayo", "Centro de Salud", "Av. Circunvalación S/N, Banda de Shilcayo", "042523145", -6.4700, -76.3480),
-        CentroSalud("Posta Médica Partido Alto", "Posta Médica", "Jr. Amazonas S/N, Partido Alto", "042524010", -6.4780, -76.3550),
-        CentroSalud("C.S. Juan Guerra", "Centro de Salud", "Plaza Principal S/N, Juan Guerra", "042525200", -6.5010, -76.3800),
-        CentroSalud("Clínica San Martín", "Clínica Privada", "Jr. Martínez de Compagnon 812, Tarapoto", "042526000", -6.4860, -76.3630),
-    )
-
-    var tabSeleccionado by remember { mutableStateOf(0) }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val centros = state.centros
+    val tabSeleccionado = state.tabSeleccionado
 
     // Referencia del mapa para evitar pantalla gris
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
@@ -149,7 +141,7 @@ fun HealthCentersScreen(navController: NavController) {
                 listOf("Mapa", "Lista").forEachIndexed { index, titulo ->
                     Tab(
                         selected = tabSeleccionado == index,
-                        onClick = { tabSeleccionado = index },
+                        onClick = { viewModel.seleccionarTab(index) },
                         selectedContentColor = MoskiGreen,
                         unselectedContentColor = MoskiTextHint,
                         text = {

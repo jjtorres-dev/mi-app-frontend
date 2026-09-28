@@ -1,5 +1,9 @@
 package com.dvt.medicimapp.presentation.screens.home
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dvt.medicimapp.di.AppViewModelFactory
+import com.dvt.medicimapp.presentation.viewmodel.MoskiCheckViewModel
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -27,12 +31,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,9 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.dvt.medicimapp.data.ApiService
-import com.dvt.medicimapp.data.EvaluacionMoskiCheckRequest
-import com.dvt.medicimapp.data.ResultadoMoskiCheckApi
+import com.dvt.medicimapp.data.model.ResultadoMoskiCheckApi
 import com.dvt.medicimapp.ui.theme.MoskiAmber
 import com.dvt.medicimapp.ui.theme.MoskiAmberDark
 import com.dvt.medicimapp.ui.theme.MoskiAmberLight
@@ -55,232 +51,34 @@ import com.dvt.medicimapp.ui.theme.MoskiSurface
 import com.dvt.medicimapp.ui.theme.MoskiTextHint
 import com.dvt.medicimapp.ui.theme.MoskiTextPrimary
 import com.dvt.medicimapp.ui.theme.MoskiTeal
-import kotlinx.coroutines.launch
 import java.util.Locale
 
 
-private data class PreguntaMoskiCheck(
-    val campo: String,
-    val texto: String,
-    val esSeguridad: Boolean = false
-)
-
-
-private val preguntasMoskiCheck = listOf(
-
-    // 11 síntomas utilizados por el modelo
-    PreguntaMoskiCheck(
-        campo = "sudden_fever",
-        texto = "¿Tiene fiebre repentina?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "headache",
-        texto = "¿Tiene dolor de cabeza?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "muscle_pain",
-        texto = "¿Tiene dolor muscular?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "joint_pain",
-        texto = "¿Tiene dolor articular?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "vomiting",
-        texto = "¿Ha presentado vómitos?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "rash",
-        texto = "¿Tiene sarpullido o erupciones en la piel?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "nausea",
-        texto = "¿Tiene náuseas?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "fatigue",
-        texto = "¿Siente cansancio o fatiga?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "orbital_pain",
-        texto = "¿Tiene dolor detrás de los ojos?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "red_eyes",
-        texto = "¿Tiene los ojos rojos?"
-    ),
-    PreguntaMoskiCheck(
-        campo = "swelling",
-        texto = "¿Presenta hinchazón?"
-    ),
-
-    // 3 señales de seguridad
-    PreguntaMoskiCheck(
-        campo = "dolor_abdominal_intenso",
-        texto = "¿Presenta dolor abdominal intenso o persistente?",
-        esSeguridad = true
-    ),
-    PreguntaMoskiCheck(
-        campo = "sangrado",
-        texto = "¿Ha presentado sangrado inusual, como sangrado de nariz o encías?",
-        esSeguridad = true
-    ),
-    PreguntaMoskiCheck(
-        campo = "vomitos_persistentes",
-        texto = "¿Ha presentado vómitos persistentes o muy frecuentes?",
-        esSeguridad = true
-    )
-)
 
 
 @Composable
 fun MoskiCheckAssistantDialog(
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    viewModel: MoskiCheckViewModel = viewModel(factory = AppViewModelFactory())
 ) {
 
-    val scope = rememberCoroutineScope()
-
-    val respuestas = remember {
-        mutableStateMapOf<String, Int>()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val iniciado = state.iniciado
+    val indicePregunta = state.indicePregunta
+    val cargando = state.cargando
+    val resultado = state.resultado
+    val error = state.error
+    val preguntasMoskiCheck = state.preguntas
+    val cerrar = {
+        viewModel.reiniciarEvaluacion()
+        onDismiss()
     }
-
-    var iniciado by remember {
-        mutableStateOf(false)
-    }
-
-    var indicePregunta by remember {
-        mutableIntStateOf(0)
-    }
-
-    var cargando by remember {
-        mutableStateOf(false)
-    }
-
-    var resultado by remember {
-        mutableStateOf<ResultadoMoskiCheckApi?>(null)
-    }
-
-    var error by remember {
-        mutableStateOf<String?>(null)
-    }
-
-
-    fun reiniciarEvaluacion() {
-
-        respuestas.clear()
-
-        iniciado = false
-        indicePregunta = 0
-        cargando = false
-        resultado = null
-        error = null
-    }
-
-
-    fun crearSolicitud(
-        datos: Map<String, Int>
-    ): EvaluacionMoskiCheckRequest {
-
-        fun valor(campo: String): Int {
-            return datos[campo] ?: 0
-        }
-
-        return EvaluacionMoskiCheckRequest(
-
-            suddenFever = valor("sudden_fever"),
-            headache = valor("headache"),
-            musclePain = valor("muscle_pain"),
-            jointPain = valor("joint_pain"),
-            vomiting = valor("vomiting"),
-            rash = valor("rash"),
-            nausea = valor("nausea"),
-            fatigue = valor("fatigue"),
-            orbitalPain = valor("orbital_pain"),
-            redEyes = valor("red_eyes"),
-            swelling = valor("swelling"),
-
-            dolorAbdominalIntenso =
-                valor("dolor_abdominal_intenso"),
-
-            sangrado =
-                valor("sangrado"),
-
-            vomitosPersistentes =
-                valor("vomitos_persistentes")
-        )
-    }
-
-
-    fun enviarEvaluacion(
-        datos: Map<String, Int>
-    ) {
-
-        cargando = true
-        error = null
-
-        scope.launch {
-
-            ApiService
-                .analizarSintomas(
-                    crearSolicitud(datos)
-                )
-                .fold(
-
-                    onSuccess = {
-
-                        resultado = it
-                        cargando = false
-                    },
-
-                    onFailure = {
-
-                        error =
-                            it.message
-                                ?: "No fue posible procesar la evaluación."
-
-                        cargando = false
-                    }
-                )
-        }
-    }
-
-
-    fun responder(
-        valor: Int
-    ) {
-
-        if (cargando) {
-            return
-        }
-
-        val preguntaActual =
-            preguntasMoskiCheck[indicePregunta]
-
-        respuestas[preguntaActual.campo] =
-            valor
-
-
-        if (
-            indicePregunta <
-            preguntasMoskiCheck.lastIndex
-        ) {
-
-            indicePregunta += 1
-
-        } else {
-
-            enviarEvaluacion(
-                respuestas.toMap()
-            )
-        }
-    }
-
 
     Dialog(
         onDismissRequest = {
 
             if (!cargando) {
-                onDismiss()
+                cerrar()
             }
         }
     ) {
@@ -360,7 +158,7 @@ fun MoskiCheckAssistantDialog(
 
 
                     OutlinedButton(
-                        onClick = onDismiss,
+                        onClick = cerrar,
                         enabled = !cargando
                     ) {
 
@@ -445,9 +243,7 @@ fun MoskiCheckAssistantDialog(
                     Button(
                         onClick = {
 
-                            iniciado = true
-                            indicePregunta = 0
-                            error = null
+                            viewModel.iniciar()
                         },
                         modifier =
                             Modifier.fillMaxWidth(),
@@ -588,9 +384,7 @@ fun MoskiCheckAssistantDialog(
                     Button(
                         onClick = {
 
-                            enviarEvaluacion(
-                                respuestas.toMap()
-                            )
+                            viewModel.enviarEvaluacion()
                         },
                         modifier =
                             Modifier.fillMaxWidth(),
@@ -613,7 +407,7 @@ fun MoskiCheckAssistantDialog(
 
                     OutlinedButton(
                         onClick = {
-                            reiniciarEvaluacion()
+                            viewModel.reiniciarEvaluacion()
                         },
                         modifier =
                             Modifier.fillMaxWidth()
@@ -644,7 +438,7 @@ fun MoskiCheckAssistantDialog(
 
                     Button(
                         onClick = {
-                            reiniciarEvaluacion()
+                            viewModel.reiniciarEvaluacion()
                         },
                         modifier =
                             Modifier.fillMaxWidth(),
@@ -666,7 +460,7 @@ fun MoskiCheckAssistantDialog(
 
 
                     OutlinedButton(
-                        onClick = onDismiss,
+                        onClick = cerrar,
                         modifier =
                             Modifier.fillMaxWidth()
                     ) {
@@ -816,7 +610,7 @@ fun MoskiCheckAssistantDialog(
 
                         OutlinedButton(
                             onClick = {
-                                responder(0)
+                                viewModel.responder(0)
                             },
                             modifier =
                                 Modifier.weight(1f),
@@ -837,7 +631,7 @@ fun MoskiCheckAssistantDialog(
 
                         Button(
                             onClick = {
-                                responder(1)
+                                viewModel.responder(1)
                             },
                             modifier =
                                 Modifier.weight(1f),

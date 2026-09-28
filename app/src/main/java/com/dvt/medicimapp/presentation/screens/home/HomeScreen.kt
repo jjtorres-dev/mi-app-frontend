@@ -1,5 +1,11 @@
 package com.dvt.medicimapp.presentation.screens.home
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dvt.medicimapp.di.AppViewModelFactory
+import com.dvt.medicimapp.presentation.viewmodel.HomeViewModel
+import com.dvt.medicimapp.presentation.state.LoadStatus
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dvt.medicimapp.R
-import com.dvt.medicimapp.data.ApiService
 import com.dvt.medicimapp.presentation.navigation.Screen
 import com.dvt.medicimapp.ui.theme.*
 import java.util.Calendar
@@ -55,7 +60,8 @@ data class NavItem(
 
 @Composable
 fun HomeScreen(
-    navController: NavController
+    navController: NavController,
+    viewModel: HomeViewModel = viewModel(factory = AppViewModelFactory())
 ) {
 
     val menuItems = listOf(
@@ -165,7 +171,7 @@ fun HomeScreen(
         ]
 
 
-    var selectedNav by remember {
+    var selectedNav by rememberSaveable {
         mutableIntStateOf(0)
     }
 
@@ -174,94 +180,24 @@ fun HomeScreen(
     // ESTADO DEL ASISTENTE MOSKICHECK
     // ========================================================
 
-    var mostrarAsistente by remember {
+    var mostrarAsistente by rememberSaveable {
         mutableStateOf(false)
     }
 
 
-    // ========================================================
-    // ESTADO DESDE LA API
-    // ========================================================
-
-    var totalReportes by remember {
-        mutableStateOf("-")
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val totalReportes = state.totales?.totalReportes?.toString()
+        ?: if (state.totalesStatus == LoadStatus.Loading) "-" else "?"
+    val totalDistritos = state.totales?.totalDistritos?.toString()
+        ?: if (state.totalesStatus == LoadStatus.Loading) "-" else "?"
+    val nivelAlerta = state.alerta?.nivel
+    val descAlerta = when (state.alertaStatus) {
+        LoadStatus.Loading -> "Cargando información de tu zona..."
+        LoadStatus.Error -> "Sin datos de alerta disponibles"
+        LoadStatus.Success -> state.alerta?.descripcion.orEmpty()
     }
-
-    var totalDistritos by remember {
-        mutableStateOf("-")
-    }
-
-    var nivelAlerta by remember {
-        mutableStateOf("moderado")
-    }
-
-    var descAlerta by remember {
-        mutableStateOf(
-            "Cargando información de tu zona..."
-        )
-    }
-
-    var cargandoStats by remember {
-        mutableStateOf(true)
-    }
-
-
-    // ========================================================
-    // CARGAR DATOS DEL HOME
-    // ========================================================
-
-    LaunchedEffect(Unit) {
-
-        ApiService
-            .obtenerTotales()
-            .fold(
-
-                onSuccess = {
-
-                    totalReportes =
-                        "${it.totalReportes}"
-
-                    totalDistritos =
-                        "${it.totalDistritos}"
-                },
-
-                onFailure = {
-
-                    totalReportes = "?"
-                    totalDistritos = "?"
-                }
-            )
-
-
-        ApiService
-            .obtenerAlertaHoy(
-                "Tarapoto"
-            )
-            .fold(
-
-                onSuccess = {
-
-                    nivelAlerta =
-                        it.nivel
-
-                    descAlerta =
-                        it.descripcion
-                },
-
-                onFailure = {
-
-                    nivelAlerta =
-                        "bajo"
-
-                    descAlerta =
-                        "Sin datos de alerta disponibles"
-                }
-            )
-
-
-        cargandoStats = false
-    }
-
+    val cargandoStats = state.totalesStatus == LoadStatus.Loading ||
+        state.alertaStatus == LoadStatus.Loading
 
     val coloresBanner =
         when (nivelAlerta) {
@@ -303,8 +239,10 @@ fun HomeScreen(
         coloresBanner[3]
 
 
-    val tituloAlerta =
-        when (nivelAlerta) {
+    val tituloAlerta = when (state.alertaStatus) {
+        LoadStatus.Loading -> "Cargando información de tu zona..."
+        LoadStatus.Error -> "No disponible"
+        LoadStatus.Success -> when (nivelAlerta) {
 
             "critico" ->
                 "⚠️ Alerta crítica en tu zona"
@@ -318,6 +256,7 @@ fun HomeScreen(
             else ->
                 "🟢 Riesgo bajo en tu zona"
         }
+    }
 
 
     Scaffold(

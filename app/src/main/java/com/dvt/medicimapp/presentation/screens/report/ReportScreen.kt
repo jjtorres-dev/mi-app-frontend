@@ -1,5 +1,10 @@
 package com.dvt.medicimapp.presentation.screens.report
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dvt.medicimapp.di.AppViewModelFactory
+import com.dvt.medicimapp.presentation.viewmodel.ReportViewModel
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,29 +32,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-import com.dvt.medicimapp.data.ApiService
 import com.dvt.medicimapp.ui.theme.*
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReportScreen(navController: NavController) {
+fun ReportScreen(
+    navController: NavController,
+    viewModel: ReportViewModel = viewModel(factory = AppViewModelFactory())
+) {
 
-    val scope = rememberCoroutineScope()
-
-    var nombre         by remember { mutableStateOf("") }
-    var distrito       by remember { mutableStateOf("") }
-    var barrio         by remember { mutableStateOf("") }
-    var descripcion    by remember { mutableStateOf("") }
-    var tipoCriadero   by remember { mutableStateOf("") }
-    var fotoUri        by remember { mutableStateOf<Uri?>(null) }
-    var esAnonimo      by remember { mutableStateOf(false) }
-    var mostrarExito   by remember { mutableStateOf(false) }
-    var mostrarError   by remember { mutableStateOf(false) }
-    var mensajeError   by remember { mutableStateOf("") }
-    var enviando       by remember { mutableStateOf(false) }
-    var distritosExpanded by remember { mutableStateOf(false) }
-    var tiposExpanded     by remember { mutableStateOf(false) }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val nombre = state.nombre
+    val distrito = state.distrito
+    val barrio = state.barrio
+    val descripcion = state.descripcion
+    val tipoCriadero = state.tipoCriadero
+    val fotoUri = state.fotoUri?.let(Uri::parse)
+    val esAnonimo = state.esAnonimo
+    val mostrarExito = state.mostrarExito
+    val mostrarError = state.error != null
+    val mensajeError = state.error.orEmpty()
+    val enviando = state.enviando
+    var distritosExpanded by rememberSaveable { mutableStateOf(false) }
+    var tiposExpanded by rememberSaveable { mutableStateOf(false) }
 
     val distritos = listOf(
         "Tarapoto", "Morales", "Banda de Shilcayo",
@@ -63,7 +68,7 @@ fun ReportScreen(navController: NavController) {
 
     val galeriaLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri -> fotoUri = uri }
+    ) { uri -> viewModel.actualizarFoto(uri?.toString()) }
 
     // ── Diálogo éxito ─────────────────────────────────────────────────────────
     if (mostrarExito) {
@@ -89,7 +94,7 @@ fun ReportScreen(navController: NavController) {
             },
             confirmButton = {
                 Button(
-                    onClick = { mostrarExito = false; navController.popBackStack() },
+                    onClick = { viewModel.confirmarExito(); navController.popBackStack() },
                     colors = ButtonDefaults.buttonColors(containerColor = MoskiGreen),
                     shape  = RoundedCornerShape(10.dp)
                 ) { Text("Aceptar") }
@@ -102,12 +107,12 @@ fun ReportScreen(navController: NavController) {
     // ── Diálogo error ─────────────────────────────────────────────────────────
     if (mostrarError) {
         AlertDialog(
-            onDismissRequest = { mostrarError = false },
+            onDismissRequest = { viewModel.cerrarError() },
             title = { Text("Error al enviar", fontWeight = FontWeight.SemiBold) },
             text  = { Text(mensajeError, fontSize = 14.sp, color = MoskiTextSecondary) },
             confirmButton = {
                 Button(
-                    onClick = { mostrarError = false },
+                    onClick = { viewModel.cerrarError() },
                     colors = ButtonDefaults.buttonColors(containerColor = MoskiRed),
                     shape  = RoundedCornerShape(10.dp)
                 ) { Text("Entendido") }
@@ -145,31 +150,11 @@ fun ReportScreen(navController: NavController) {
             }
         },
         bottomBar = {
-            val formularioValido = distrito.isNotBlank() && tipoCriadero.isNotBlank() &&
-                    (esAnonimo || nombre.isNotBlank())
+            val formularioValido = state.formularioValido
             Surface(color = MoskiSurface, shadowElevation = 8.dp) {
                 Button(
                     onClick = {
-                        // ── Llamada real a la API ─────────────────────────
-                        scope.launch {
-                            enviando = true
-                            val result = ApiService.enviarReporte(
-                                nombre       = if (esAnonimo) null else nombre,
-                                distrito     = distrito,
-                                barrio       = barrio.ifBlank { null },
-                                tipoCriadero = tipoCriadero,
-                                descripcion  = descripcion.ifBlank { null },
-                                esAnonimo    = esAnonimo
-                            )
-                            enviando = false
-                            result.fold(
-                                onSuccess = { mostrarExito = true },
-                                onFailure = {
-                                    mensajeError = "No se pudo conectar con el servidor. Verifica tu conexión."
-                                    mostrarError = true
-                                }
-                            )
-                        }
+                        viewModel.enviar()
                     },
                     enabled = formularioValido && !enviando,
                     modifier = Modifier
@@ -221,7 +206,7 @@ fun ReportScreen(navController: NavController) {
                 }
                 Switch(
                     checked = esAnonimo,
-                    onCheckedChange = { esAnonimo = it },
+                    onCheckedChange = { viewModel.actualizarAnonimato(it) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor   = Color.White,
                         checkedTrackColor   = MoskiGreen,
@@ -236,7 +221,7 @@ fun ReportScreen(navController: NavController) {
 
             if (!esAnonimo) {
                 OutlinedTextField(
-                    value = nombre, onValueChange = { nombre = it },
+                    value = nombre, onValueChange = { viewModel.actualizarNombre(it) },
                     label = { Text("Nombre completo") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
                     shape = RoundedCornerShape(12.dp),
@@ -260,13 +245,13 @@ fun ReportScreen(navController: NavController) {
                     onDismissRequest = { distritosExpanded = false }) {
                     distritos.forEach { d ->
                         DropdownMenuItem(text = { Text(d) },
-                            onClick = { distrito = d; distritosExpanded = false })
+                            onClick = { viewModel.actualizarDistrito(d); distritosExpanded = false })
                     }
                 }
             }
 
             OutlinedTextField(
-                value = barrio, onValueChange = { barrio = it },
+                value = barrio, onValueChange = { viewModel.actualizarBarrio(it) },
                 label = { Text("Barrio / Sector / Referencia") },
                 modifier = Modifier.fillMaxWidth(), singleLine = true,
                 shape = RoundedCornerShape(12.dp),
@@ -292,13 +277,13 @@ fun ReportScreen(navController: NavController) {
                     onDismissRequest = { tiposExpanded = false }) {
                     tiposCriadero.forEach { t ->
                         DropdownMenuItem(text = { Text(t) },
-                            onClick = { tipoCriadero = t; tiposExpanded = false })
+                            onClick = { viewModel.actualizarTipoCriadero(t); tiposExpanded = false })
                     }
                 }
             }
 
             OutlinedTextField(
-                value = descripcion, onValueChange = { descripcion = it },
+                value = descripcion, onValueChange = { viewModel.actualizarDescripcion(it) },
                 label = { Text("Descripción del lugar") },
                 placeholder = { Text("Ej: Frente a la tienda, recipientes con agua verde", fontSize = 12.sp) },
                 modifier = Modifier.fillMaxWidth().height(100.dp), maxLines = 4,
@@ -339,7 +324,7 @@ fun ReportScreen(navController: NavController) {
             }
 
             if (fotoUri != null) {
-                TextButton(onClick = { fotoUri = null },
+                TextButton(onClick = { viewModel.actualizarFoto(null) },
                     modifier = Modifier.align(Alignment.End)) {
                     Text("Quitar foto", color = MoskiRed, fontSize = 12.sp)
                 }
